@@ -1,124 +1,121 @@
 import pandas as pd
 import math
+import matplotlib.pyplot as plt
 
-# Step 1: Input Raw Data
-material_supply = 320
-wk1_actual_build = {
-    'Superman': 70,
-    'Superman_Plus': 70,
-    'Superman_Mini': 60
-}
+class AllocationEngine:
+    def __init__(self):
+        # input data
+        self.material_supply = {
+            'Jan_Wk2': 230,
+            'Jan_Wk3': 270,
+            'Jan_Wk4': 320,
+            'Jan_Wk5': 380
+        }
 
-demand_fct = {
-    'Superman': 110,
-    'Superman_Plus': 150,
-    'Superman_Mini': 70
-}
+        self.wk1_actual_build = {
+            'Superman': 70,
+            'Superman_Plus': 70,
+            'Superman_Mini': 60
+        }
 
-superman_plus_demand = {
-    'Online_Store': 40,
-    'Retail_Store': 30,
-    'Reseller_Partners_Total': 80, # PAC + AMR + Europe
-    'PAC_Reseller': 35,
-    'AMR_Reseller': 30,
-    'Europe_Reseller': 15
-}
+        self.demand_fct = {
+            'Jan_Wk2': {'Superman': 85, 'Superman_Plus': 85, 'Superman_Mini': 40},
+            'Jan_Wk3': {'Superman': 100, 'Superman_Plus': 120, 'Superman_Mini': 60},
+            'Jan_Wk4': {'Superman': 110, 'Superman_Plus': 150, 'Superman_Mini': 70},
+            'Jan_Wk5': {'Superman': 120, 'Superman_Plus': 175, 'Superman_Mini': 75}
+        }
 
-# Step 2: Calculate Available Material A
-available_material = material_supply - sum(wk1_actual_build.values())
+        self.superman_plus_demand = {
+            'Jan_Wk2': {'Online_Store': 20, 'Retail_Store': 15, 'Reseller_Partners': 50, 'PAC': 25, 'AMR': 20, 'Europe': 5},
+            'Jan_Wk3': {'Online_Store': 30, 'Retail_Store': 25, 'Reseller_Partners': 65, 'PAC': 30, 'AMR': 25, 'Europe': 10},
+            'Jan_Wk4': {'Online_Store': 40, 'Retail_Store': 30, 'Reseller_Partners': 80, 'PAC': 35, 'AMR': 30, 'Europe': 15},
+            'Jan_Wk5': {'Online_Store': 50, 'Retail_Store': 35, 'Reseller_Partners': 90, 'PAC': 40, 'AMR': 35, 'Europe': 15}
+        }
 
-# Step 3: Protect PAC Reseller Partner
-pac_reseller_allocation = min(superman_plus_demand['PAC_Reseller'], available_material)
-remaining_material = available_material - pac_reseller_allocation
+        self.final_allocation = {}
 
-# Step 4: Proportional Allocation to Superman and Mini
-remaining_program_demand = {
-    'Superman': demand_fct['Superman'],
-    'Superman_Mini': demand_fct['Superman_Mini'],
-    'Superman_Plus_Others': (superman_plus_demand['Online_Store'] +
-                              superman_plus_demand['Retail_Store'] +
-                              superman_plus_demand['AMR_Reseller'] +
-                              superman_plus_demand['Europe_Reseller'])
-}
+    def visualize_inputs(self):
+        print("Table 1: Material Cumulative Supply")
+        supply_df = pd.DataFrame(list(self.material_supply.items()), columns=['Week', 'Cumulative_Supply'])
+        print(supply_df)
 
-total_remaining_demand = sum(remaining_program_demand.values())
+        print("\nTable 2: Wk1 Actual Build")
+        build_df = pd.DataFrame.from_dict(self.wk1_actual_build, orient='index', columns=['Units_Built'])
+        print(build_df)
 
-# Initial allocation before rounding
-initial_allocations = {}
-for key, demand in remaining_program_demand.items():
-    proportion = demand / total_remaining_demand
-    allocated_units = remaining_material * proportion
-    initial_allocations[key] = math.ceil(allocated_units)
+        print("\nTable 3: Demand Forecast (Cumulative)")
+        demand_df = pd.DataFrame(self.demand_fct).T
+        print(demand_df)
 
-# Step 5: Adjust if Over-Allocation
-total_allocated_units = sum(initial_allocations.values())
-while total_allocated_units > remaining_material:
-    # Reduce from Superman_Plus_Others first, then Superman_Mini, then Superman
-    for key in ['Superman_Plus_Others', 'Superman_Mini', 'Superman']:
-        if initial_allocations[key] > 0:
-            initial_allocations[key] -= 1
-            break
-    total_allocated_units = sum(initial_allocations.values())
+        print("\nTable 4: Superman Plus Channel Demand (Cumulative)")
+        plus_demand_df = pd.DataFrame(self.superman_plus_demand).T
+        print(plus_demand_df)
 
-# Step 6: Further split Superman Plus Others
-plus_total_allocated = initial_allocations['Superman_Plus_Others']
+    def allocate_material(self):
+        available_material = self.material_supply['Jan_Wk4'] - sum(self.wk1_actual_build.values())
 
-# Channel ratio calculation
-total_plus_channels = (superman_plus_demand['Online_Store'] +
-                        superman_plus_demand['Retail_Store'] +
-                        superman_plus_demand['AMR_Reseller'] +
-                        superman_plus_demand['Europe_Reseller'])
+        # Step 1: Protect PAC Reseller Partner
+        pac_reseller_allocation = min(self.superman_plus_demand['Jan_Wk4']['PAC'], available_material)
+        remaining_material = available_material - pac_reseller_allocation
 
-online_ratio = superman_plus_demand['Online_Store'] / total_plus_channels
-retail_ratio = superman_plus_demand['Retail_Store'] / total_plus_channels
-reseller_ratio = (superman_plus_demand['AMR_Reseller'] + superman_plus_demand['Europe_Reseller']) / total_plus_channels
+        # Step 2: Prioritize Superman and Superman Mini
+        superman_demand = self.demand_fct['Jan_Wk4']['Superman']
+        superman_mini_demand = self.demand_fct['Jan_Wk4']['Superman_Mini']
 
-# Initial channel allocations
-online_alloc = math.ceil(plus_total_allocated * online_ratio)
-retail_alloc = math.ceil(plus_total_allocated * retail_ratio)
-reseller_total_alloc = math.ceil(plus_total_allocated * reseller_ratio)
+        total_priority_demand = superman_demand + superman_mini_demand
 
-# Adjust channels if over-allocated
-allocations = {
-    'reseller_total_alloc': reseller_total_alloc,
-    'retail_alloc': retail_alloc,
-    'online_alloc': online_alloc
-}
+        superman_ratio = superman_demand / total_priority_demand
+        superman_mini_ratio = superman_mini_demand / total_priority_demand
 
-channel_total = sum(allocations.values())
+        superman_alloc = math.ceil(remaining_material * superman_ratio)
+        superman_mini_alloc = math.ceil(remaining_material * superman_mini_ratio)
 
-while channel_total > plus_total_allocated:
-    for key in ['reseller_total_alloc', 'retail_alloc', 'online_alloc']:
-        if allocations[key] > 0:
-            allocations[key] -= 1
-            break
-    channel_total = sum(allocations.values())
+        total_allocated = superman_alloc + superman_mini_alloc
+        surplus_material = 0
 
-# Update individual allocations
-reseller_total_alloc = allocations['reseller_total_alloc']
-retail_alloc = allocations['retail_alloc']
-online_alloc = allocations['online_alloc']
+        if total_allocated > remaining_material:
+            surplus_material = total_allocated - remaining_material
+            if superman_mini_alloc >= surplus_material:
+                superman_mini_alloc -= surplus_material
+            else:
+                superman_alloc -= (surplus_material - superman_mini_alloc)
+                superman_mini_alloc = 0
 
-# Step 7: Further split Reseller Partners into AMR and Europe (2:1)
-amr_alloc = math.floor(reseller_total_alloc * (2/3))
-europe_alloc = reseller_total_alloc - amr_alloc
+        # Step 3: No surplus for Superman Plus channels in this setup
+        online_alloc = 0
+        retail_alloc = 0
+        amr_alloc = 0
+        europe_alloc = 0
 
-# Step 8: Final Output
-final_allocation = {
-    'PAC_Reseller': pac_reseller_allocation,
-    'Superman': initial_allocations['Superman'],
-    'Superman_Mini': initial_allocations['Superman_Mini'],
-    'Superman_Plus_Online_Store': online_alloc,
-    'Superman_Plus_Retail_Store': retail_alloc,
-    'Superman_Plus_Reseller_AMR': amr_alloc,
-    'Superman_Plus_Reseller_Europe': europe_alloc
-}
+        self.final_allocation = {
+            'PAC_Reseller': pac_reseller_allocation,
+            'Superman': superman_alloc,
+            'Superman_Mini': superman_mini_alloc,
+            'Superman_Plus_Online_Store': online_alloc,
+            'Superman_Plus_Retail_Store': retail_alloc,
+            'Superman_Plus_Reseller_AMR': amr_alloc,
+            'Superman_Plus_Reseller_Europe': europe_alloc
+        }
 
-# Output
-print("Final Allocation at Jan Wk4:")
-for key, value in final_allocation.items():
-    print(f"{key}: {value} units")
+    def visualize_output(self):
+        print("\nFinal Allocation at Jan Wk4:")
+        df_output = pd.DataFrame(list(self.final_allocation.items()), columns=['Channel', 'Allocated_Units'])
+        print(df_output)
 
-# Save to CSV
-df = pd.DataFrame(list(final_allocation.items()), columns=['Channel', 'Allocated_Units'])
-df.to_csv('case2_final_allocation_refined.csv', index=False)
+        df_output.plot(x='Channel', y='Allocated_Units', kind='bar', legend=False)
+        plt.title('Final Allocation Result')
+        plt.ylabel('Units')
+        plt.xticks(rotation=45, ha='right')
+        plt.tight_layout()
+        plt.show()
+
+    def save_output(self, filename='case2_allocation.csv'):
+        df = pd.DataFrame(list(self.final_allocation.items()), columns=['Channel', 'Allocated_Units'])
+        df.to_csv(filename, index=False)
+
+if __name__ == "__main__":
+    engine = AllocationEngine()
+    engine.visualize_inputs()
+    engine.allocate_material()
+    engine.visualize_output()
+    engine.save_output()

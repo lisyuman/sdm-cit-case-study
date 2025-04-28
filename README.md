@@ -1,16 +1,21 @@
 # sdm-cit-case-study: Case 1 & Case 2
 
 ## Overview
-This repository contains the complete solution for the Apple Take-Home Assignment involving Superman Plus planning challenges:
+This repository contains the complete solution for Case 1 and Case 2:
 - **Case 1**: Forecast the initial 15-week demand for the new Superman Plus product.
 - **Case 2**: Strategically allocate constrained Material A across multiple programs with clear prioritization.
 
 ## Structure
-- `/case1_forecast/`: Demand forecasting model and outputs.
-- `/case2_allocation/`: Material allocation model and outputs.
-- `/deck/`: Final presentation deck summarizing approach, insights, and learnings.
-- `/dashboard/`: (Optional) Streamlit web app for visualization.
-- `/data/`: Raw input data.
+- `/case1_forecast/`
+  - `case1_forecast_script.py`
+  - `case1_forecast.csv`
+  - `case1_methodology_summary.md`
+- `/case2_allocation/`
+  - `case2_allocation_script.py`
+  - `case2_allocation.csv`
+  - `case2_methodology_summary.md`
+- `/dashboard/`
+  - `streamlit_app.py`
 
 ## Case 1: Demand Forecasting
 - Predict the weekly demand for Superman Plus over the first 15 weeks post-launch.
@@ -36,6 +41,8 @@ This repository contains the complete solution for the Apple Take-Home Assignmen
 - Shortage Management Tactics
 
 ## How to Run
-Install required packages:
 ```bash
 pip install -r requirements.txt
+python case1_forecast/case1_forecast_script.py
+python case2_allocation/case2_allocation_script.py
+streamlit run dashboard/streamlit_app.py
