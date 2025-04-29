@@ -8,7 +8,8 @@ This repository contains the complete solution for Case 1 and Case 2:
 ## Structure
 - `/case1_forecast/`
   - `case1_forecast_script.py`
-  - `case1_forecast.csv`
+  - `case1_forecast_with_tech_sensitivity.csv`
+  - `case1_forecast_without_tech_sensitivity.csv`
   - `case1_methodology_summary.md`
 - `/case2_allocation/`
   - `case2_allocation_script.py`
