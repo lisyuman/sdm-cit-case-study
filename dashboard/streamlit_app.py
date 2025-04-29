@@ -26,8 +26,9 @@ princess_plus_data = pd.DataFrame({
 })
 
 # Load forecast outputs
-forecast_with_tech = pd.read_csv('../case1_forecast/case1_forecast_with_tech_sensitivity.csv')
-forecast_without_tech = pd.read_csv('../case1_forecast/case1_forecast_without_tech_sensitivity.csv')
+forecast_with_tech = pd.read_csv('./case1_forecast/case1_forecast_with_tech_sensitivity.csv')
+forecast_without_tech = pd.read_csv('./case1_forecast/case1_forecast_without_tech_sensitivity.csv')
+
 
 # Set up Streamlit page
 st.set_page_config(page_title="Superman Plus Forecast Dashboard", layout="wide")
@@ -88,3 +89,4 @@ with tab1:
     st.dataframe(selected_forecast.style.format({'AMR': '{:.0f}', 'Europe': '{:.0f}', 'PAC': '{:.0f}'}))
 
 st.success("✅ Dashboard loaded successfully!")
+
