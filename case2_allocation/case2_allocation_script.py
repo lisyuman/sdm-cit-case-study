@@ -1,121 +1,146 @@
-import pandas as pd
-import math
-import matplotlib.pyplot as plt
+from gurobipy import Model, GRB
 
-class AllocationEngine:
-    def __init__(self):
-        # input data
-        self.material_supply = {
-            'Jan_Wk2': 230,
-            'Jan_Wk3': 270,
-            'Jan_Wk4': 320,
-            'Jan_Wk5': 380
-        }
+# ---------- DATA ---------- #
+weeks = ["wk2", "wk3", "wk4", "wk5"]
+products = ["Superman", "SupermanPlus", "SupermanMini"]
+channels = ["Online", "Retail", "Reseller"]
+reseller_regions = ["AMR", "Europe", "PAC"]
 
-        self.wk1_actual_build = {
-            'Superman': 70,
-            'Superman_Plus': 70,
-            'Superman_Mini': 60
-        }
+# Initial total supply budget
+initial_weekly_supply = {"wk2": 230, "wk3": 270, "wk4": 320, "wk5": 380}
 
-        self.demand_fct = {
-            'Jan_Wk2': {'Superman': 85, 'Superman_Plus': 85, 'Superman_Mini': 40},
-            'Jan_Wk3': {'Superman': 100, 'Superman_Plus': 120, 'Superman_Mini': 60},
-            'Jan_Wk4': {'Superman': 110, 'Superman_Plus': 150, 'Superman_Mini': 70},
-            'Jan_Wk5': {'Superman': 120, 'Superman_Plus': 175, 'Superman_Mini': 75}
-        }
+# Demand forecast per product per week (cumulative)
+cumulative_demand = {
+    "Superman": [85, 100, 110, 120],
+    "SupermanPlus": [85, 120, 150, 175],
+    "SupermanMini": [40, 60, 70, 75]
+}
 
-        self.superman_plus_demand = {
-            'Jan_Wk2': {'Online_Store': 20, 'Retail_Store': 15, 'Reseller_Partners': 50, 'PAC': 25, 'AMR': 20, 'Europe': 5},
-            'Jan_Wk3': {'Online_Store': 30, 'Retail_Store': 25, 'Reseller_Partners': 65, 'PAC': 30, 'AMR': 25, 'Europe': 10},
-            'Jan_Wk4': {'Online_Store': 40, 'Retail_Store': 30, 'Reseller_Partners': 80, 'PAC': 35, 'AMR': 30, 'Europe': 15},
-            'Jan_Wk5': {'Online_Store': 50, 'Retail_Store': 35, 'Reseller_Partners': 90, 'PAC': 40, 'AMR': 35, 'Europe': 15}
-        }
+# Incremental demand per week (for WOS)
+incremental_demand = {
+    "Superman":  [0, 15, 10, 10],
+    "SupermanPlus": [0, 35, 30, 25],
+    "SupermanMini": [0, 20, 10, 5]
+}
 
-        self.final_allocation = {}
+# Channel demand for Superman Plus
+channel_demand = {
+    "Online":   [20, 30, 40, 50],
+    "Retail":   [15, 25, 30, 35],
+    "Reseller": [50, 65, 80, 90]
+}
 
-    def visualize_inputs(self):
-        print("Table 1: Material Cumulative Supply")
-        supply_df = pd.DataFrame(list(self.material_supply.items()), columns=['Week', 'Cumulative_Supply'])
-        print(supply_df)
+# Reseller region demand
+reseller_demand = {
+    "AMR":   [20, 25, 30, 35],
+    "Europe": [5, 10, 15, 15],
+    "PAC":    [25, 30, 35, 40]
+}
 
-        print("\nTable 2: Wk1 Actual Build")
-        build_df = pd.DataFrame.from_dict(self.wk1_actual_build, orient='index', columns=['Units_Built'])
-        print(build_df)
+# ---------- MODEL ---------- #
+model = Model("ProductAllocation")
+model.setParam('OutputFlag', 0)  # Silent solve
 
-        print("\nTable 3: Demand Forecast (Cumulative)")
-        demand_df = pd.DataFrame(self.demand_fct).T
-        print(demand_df)
+# Decision variables (integer)
+alloc = {(p, w): model.addVar(vtype=GRB.INTEGER, name=f"alloc_{p}_{w}") for p in products for w in weeks}
 
-        print("\nTable 4: Superman Plus Channel Demand (Cumulative)")
-        plus_demand_df = pd.DataFrame(self.superman_plus_demand).T
-        print(plus_demand_df)
+# Slack for SupermanPlus soft demand constraint
+slack = {w: model.addVar(lb=0, name=f"slack_SP_{w}") for w in weeks}
 
-    def allocate_material(self):
-        available_material = self.material_supply['Jan_Wk4'] - sum(self.wk1_actual_build.values())
+# Demand constraints
+for i, w in enumerate(weeks):
+    model.addConstr(alloc["Superman", w] >= cumulative_demand["Superman"][i], name=f"demand_S_{w}")
+    model.addConstr(alloc["SupermanMini", w] >= cumulative_demand["SupermanMini"][i], name=f"demand_SM_{w}")
+    model.addConstr(alloc["SupermanPlus", w] + slack[w] >= cumulative_demand["SupermanPlus"][i], name=f"demand_SP_soft_{w}")
 
-        # Step 1: Protect PAC Reseller Partner
-        pac_reseller_allocation = min(self.superman_plus_demand['Jan_Wk4']['PAC'], available_material)
-        remaining_material = available_material - pac_reseller_allocation
+# Total supply must be fully used
+model.addConstr(sum(alloc[p, w] for p in products for w in weeks) == sum(initial_weekly_supply.values()), name="TotalSupply")
 
-        # Step 2: Prioritize Superman and Superman Mini
-        superman_demand = self.demand_fct['Jan_Wk4']['Superman']
-        superman_mini_demand = self.demand_fct['Jan_Wk4']['Superman_Mini']
+# Cumulative actual build = allocation + base buffer
+base_build = {"Superman": 70, "SupermanPlus": 70, "SupermanMini": 60}
 
-        total_priority_demand = superman_demand + superman_mini_demand
+# WOS constraint (strict, WOS >= 4)
+for p in products:
+    for i in range(0, 4):  # wk3, wk4, wk5 (i=1,2,3)
+        cum_build = sum(alloc[p, weeks[j]] for j in range(i+1)) + base_build[p]
+        cum_demand = cumulative_demand[p][i]
+        end_on_hand = cum_build - cum_demand
+        avg_future_demand = incremental_demand[p][i] if i < 3 else incremental_demand[p][2]
+        model.addConstr(end_on_hand >= 4 * avg_future_demand, name=f"WOS_ge4_{p}_{weeks[i]}")
 
-        superman_ratio = superman_demand / total_priority_demand
-        superman_mini_ratio = superman_mini_demand / total_priority_demand
+# Objective: maximize use of supply with minimum slack penalty
+model.setObjective(sum(alloc[p, w] for p in products for w in weeks) - 10 * sum(slack[w] for w in weeks), GRB.MAXIMIZE)
 
-        superman_alloc = math.ceil(remaining_material * superman_ratio)
-        superman_mini_alloc = math.ceil(remaining_material * superman_mini_ratio)
+model.optimize()
 
-        total_allocated = superman_alloc + superman_mini_alloc
-        surplus_material = 0
+if model.Status != GRB.OPTIMAL:
+    print("Model infeasible or unbounded")
+    model.computeIIS()
+    model.write("infeasible.ilp")
+    exit()
 
-        if total_allocated > remaining_material:
-            surplus_material = total_allocated - remaining_material
-            if superman_mini_alloc >= surplus_material:
-                superman_mini_alloc -= surplus_material
-            else:
-                superman_alloc -= (surplus_material - superman_mini_alloc)
-                superman_mini_alloc = 0
+product_alloc = {p: {w: int(alloc[p, w].X) for w in weeks} for p in products}
+superman_plus_alloc = {w: product_alloc["SupermanPlus"][w] for w in weeks}
 
-        # Step 3: No surplus for Superman Plus channels in this setup
-        online_alloc = 0
-        retail_alloc = 0
-        amr_alloc = 0
-        europe_alloc = 0
+# ---------- CHANNEL ALLOCATION MODEL ---------- #
+model2 = Model("ChannelAllocation")
+model2.setParam('OutputFlag', 0)
 
-        self.final_allocation = {
-            'PAC_Reseller': pac_reseller_allocation,
-            'Superman': superman_alloc,
-            'Superman_Mini': superman_mini_alloc,
-            'Superman_Plus_Online_Store': online_alloc,
-            'Superman_Plus_Retail_Store': retail_alloc,
-            'Superman_Plus_Reseller_AMR': amr_alloc,
-            'Superman_Plus_Reseller_Europe': europe_alloc
-        }
+channel_alloc = {}
+channel_dev = {}
+for c in channels:
+    for w in weeks:
+        channel_alloc[c, w] = model2.addVar(lb=0, name=f"{c}_{w}")
+        channel_dev[c, w] = model2.addVar(lb=0, name=f"dev_{c}_{w}")
+        i = weeks.index(w)
+        model2.addConstr(channel_alloc[c, w] - channel_demand[c][i] <= channel_dev[c, w])
+        model2.addConstr(channel_demand[c][i] - channel_alloc[c, w] <= channel_dev[c, w])
 
-    def visualize_output(self):
-        print("\nFinal Allocation at Jan Wk4:")
-        df_output = pd.DataFrame(list(self.final_allocation.items()), columns=['Channel', 'Allocated_Units'])
-        print(df_output)
+for w in weeks:
+    model2.addConstr(sum(channel_alloc[c, w] for c in channels) == superman_plus_alloc[w], name=f"channel_match_{w}")
+    model2.addConstr(channel_alloc["Online", w] >= channel_alloc["Retail", w], name=f"prio_online_{w}")
+    model2.addConstr(channel_alloc["Retail", w] >= channel_alloc["Reseller", w], name=f"prio_retail_{w}")
 
-        df_output.plot(x='Channel', y='Allocated_Units', kind='bar', legend=False)
-        plt.title('Final Allocation Result')
-        plt.ylabel('Units')
-        plt.xticks(rotation=45, ha='right')
-        plt.tight_layout()
-        plt.show()
+model2.setObjective(sum(channel_dev[c, w] for c in channels for w in weeks), GRB.MINIMIZE)
+model2.optimize()
 
-    def save_output(self, filename='case2_allocation.csv'):
-        df = pd.DataFrame(list(self.final_allocation.items()), columns=['Channel', 'Allocated_Units'])
-        df.to_csv(filename, index=False)
+channel_output = {c: {w: channel_alloc[c, w].X for w in weeks} for c in channels}
 
-if __name__ == "__main__":
-    engine = AllocationEngine()
-    engine.visualize_inputs()
-    engine.allocate_material()
-    engine.visualize_output()
-    engine.save_output()
+# ---------- REGION-LEVEL RESELLER ALLOCATION ---------- #
+model3 = Model("ResellerRegionAllocation")
+model3.setParam('OutputFlag', 0)
+
+reseller_alloc = {}
+reseller_dev = {}
+for r in reseller_regions:
+    for w in weeks:
+        reseller_alloc[r, w] = model3.addVar(lb=0, name=f"{r}_{w}")
+        reseller_dev[r, w] = model3.addVar(lb=0, name=f"dev_{r}_{w}")
+        i = weeks.index(w)
+        model3.addConstr(reseller_alloc[r, w] - reseller_demand[r][i] <= reseller_dev[r, w])
+        model3.addConstr(reseller_demand[r][i] - reseller_alloc[r, w] <= reseller_dev[r, w])
+
+for w in weeks:
+    model3.addConstr(sum(reseller_alloc[r, w] for r in reseller_regions) == channel_output["Reseller"][w], name=f"reseller_match_{w}")
+
+model3.setObjective(sum(reseller_dev[r, w] for r in reseller_regions for w in weeks), GRB.MINIMIZE)
+model3.optimize()
+
+# ---------- PRINT RESULTS ---------- #
+print("\n🎯 FINAL PRODUCT ALLOCATION PER WEEK:")
+for p in products:
+    print(f"\n{p}:")
+    for w in weeks:
+        print(f"  {w}: {product_alloc[p][w]}")
+
+print("\n🧩 SUPERMAN PLUS CHANNEL ALLOCATION:")
+for c in channels:
+    print(f"\n{c}:")
+    for w in weeks:
+        print(f"  {w}: {channel_output[c][w]:.1f}")
+
+print("\n🌍 SUPERMAN PLUS RESELLER REGION ALLOCATION:")
+for r in reseller_regions:
+    print(f"\n{r}:")
+    for w in weeks:
+        print(f"  {w}: {reseller_alloc[r, w].X:.1f}")

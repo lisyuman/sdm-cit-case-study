@@ -13,10 +13,12 @@ This repository contains the complete solution for Case 1 and Case 2:
   - `case1_methodology_summary.md`
 - `/case2_allocation/`
   - `case2_allocation_script.py`
-  - `case2_allocation.csv`
+  - `case2_allocation_solution.xlxs`
   - `case2_methodology_summary.md`
 - `/dashboard/`
   - `streamlit_app.py`
+- `/deck/`
+  - `/case1_case2_deck.pdf/`
 
 ## Case 1: Demand Forecasting
 - Predict the weekly demand for Superman Plus over the first 15 weeks post-launch.
