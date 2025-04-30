@@ -25,6 +25,7 @@ This repository contains the complete solution for Case 1 and Case 2:
 - Consider seasonality, price elasticity, and linearity smoothing techniques.
 - Applied light 3-week smoothing to preserve realistic demand fluctuations.
 - Detailed methodology in `case1_methodology_summary.md`.
+- Web dashboard: https://sdm-cit-case-study-3guufqpsjrvcmbcasfvc4u.streamlit.app/
 
 ## Case 2: Material Allocation
 - Prioritize PAC Reseller Partner fulfillment during Jan Wk4 promotion.
